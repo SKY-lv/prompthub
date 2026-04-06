@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PromptHub - Prompt版本管理</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,'Segoe UI',sans-serif;background:#0f0f1a;color:#e2e8f0;min-height:100vh;}
+.app{display:grid;grid-template-columns:300px 1fr;height:100vh;}
+.sidebar{background:#1e1e2e;border-right:1px solid #2d2d44;display:flex;flex-direction:column;}
+.sidebar-header{padding:16px;border-bottom:1px solid #2d2d44;display:flex;align-items:center;justify-content:space-between;}
+.sidebar-title{font-weight:600;}
+.prompt-list{flex:1;overflow-y:auto;padding:8px;}
+.prompt-item{padding:12px;border-radius:8px;cursor:pointer;margin:4px 0;transition:all 0.15s;}
+.prompt-item:hover{background:#2d2d44;}
+.prompt-item.active{background:#7c3aed33;border:1px solid #7c3aed;}
+.prompt-item h4{font-size:13px;margin-bottom:4px;}
+.prompt-item p{font-size:11px;color:#8b949e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.prompt-item .meta{display:flex;gap:8px;margin-top:6px;font-size:10px;color:#64748b;}
+.main{display:flex;flex-direction:column;background:#0f0f1a;}
+.toolbar{height:48px;background:#1e1e2e;border-bottom:1px solid #2d2d44;display:flex;align-items:center;padding:0 16px;gap:12px;}
+.toolbar input{flex:1;background:#0f0f1a;border:1px solid #2d2d44;border-radius:6px;color:#e2e8f0;padding:8px 12px;font-size:13px;}
+.toolbar input:focus{outline:none;border-color:#7c3aed;}
+.content{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.editor-area{flex:1;display:flex;flex-direction:column;padding:16px;}
+.prompt-editor{flex:1;background:#0f0f1a;border:1px solid #2d2d44;border-radius:8px;color:#e2e8f0;padding:16px;font-family:'Courier New',monospace;font-size:14px;resize:none;line-height:1.6;}
+.prompt-editor:focus{outline:none;border-color:#7c3aed;}
+.version-panel{background:#1e1e2e;border-top:1px solid #2d2d44;padding:12px 16px;}
+.version-list{display:flex;gap:8px;overflow-x:auto;padding:8px 0;}
+.version-item{padding:8px 16px;background:#0f0f1a;border:1px solid #2d2d44;border-radius:6px;cursor:pointer;font-size:12px;white-space:nowrap;transition:all 0.15s;}
+.version-item:hover{border-color:#7c3aed;}
+.version-item.current{background:#7c3aed33;border-color:#7c3aed;}
+.version-item .vnum{font-weight:600;color:#7c3aed;}
+.version-item .vdate{color:#64748b;margin-left:8px;}
+.tags-area{padding:12px 16px;background:#1e1e2e;border-bottom:1px solid #2d2d44;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.tag{padding:4px 12px;background:#2d2d44;border-radius:20px;font-size:12px;display:flex;align-items:center;gap:6px;}
+.tag button{background:none;border:none;color:#64748b;cursor:pointer;font-size:14px;}
+.tag button:hover{color:#ef4444;}
+.add-tag input{background:#0f0f1a;border:1px solid #2d2d44;border-radius:20px;color:#e2e8f0;padding:4px 12px;font-size:12px;width:100px;}
+.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;transition:all 0.2s;}
+.btn-primary{background:#7c3aed;color:#fff;}
+.btn-primary:hover{background:#6d28d9;}
+.btn-secondary{background:#2d2d44;color:#e2e8f0;border:1px solid #3d3d5c;}
+.btn-secondary:hover{background:#3d3d5c;}
+.btn-success{background:#10b981;color:#fff;}
+.btn-success:hover{background:#059669;}
+.modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:1000;}
+.modal.show{display:flex;}
+.modal-content{background:#1e1e2e;border:1px solid #2d2d44;border-radius:12px;padding:24px;min-width:400px;}
+.modal-title{font-size:16px;font-weight:600;margin-bottom:16px;}
+.field{margin-bottom:12px;}
+.field label{display:block;font-size:12px;color:#8b949e;margin-bottom:4px;}
+.field input,.field textarea{width:100%;background:#0f0f1a;border:1px solid #2d2d44;border-radius:6px;color:#e2e8f0;padding:8px 12px;font-size:13px;}
+.stats{display:flex;gap:16px;padding:12px 16px;background:#0f0f1a;border-bottom:1px solid #2d2d44;font-size:12px;color:#64748b;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">📚 Prompt库</span>
+      <button class="btn btn-primary" onclick="showNewPrompt()" style="padding:6px 12px;font-size:12px">+ 新建</button>
+    </div>
+    <div class="prompt-list" id="prompt-list"></div>
+  </div>
+  
+  <div class="main">
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="搜索 Prompt..." oninput="filterPrompts()">
+      <button class="btn btn-secondary" onclick="compareVersions()">📊 对比</button>
+      <button class="btn btn-secondary" onclick="exportAll()">📤 导出</button>
+    </div>
+    
+    <div class="stats" id="stats">
+      <span>Prompts: <strong id="total-count">0</strong></span>
+      <span>版本总数: <strong id="version-count">0</strong></span>
+      <span>标签: <strong id="tag-count">0</strong></span>
+    </div>
+    
+    <div class="tags-area" id="tags-area">
+      <span style="font-size:12px;color:#8b949e">标签:</span>
+    </div>
+    
+    <div class="content">
+      <div class="editor-area">
+        <textarea class="prompt-editor" id="prompt-editor" placeholder="输入或编辑 Prompt..." oninput="markDirty()"></textarea>
+      </div>
+      
+      <div class="version-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:12px;color:#8b949e">版本历史</span>
+          <div>
+            <button class="btn btn-success" onclick="saveVersion()" style="padding:4px 12px;font-size:12px">💾 保存版本</button>
+            <button class="btn btn-secondary" onclick="testPrompt()" style="padding:4px 12px;font-size:12px;margin-left:8px">▶ 测试</button>
+          </div>
+        </div>
+        <div class="version-list" id="version-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="new-modal">
+  <div class="modal-content">
+    <div class="modal-title">新建 Prompt</div>
+    <div class="field">
+      <label>名称</label>
+      <input type="text" id="new-name" placeholder="如: code-review">
+    </div>
+    <div class="field">
+      <label>描述</label>
+      <input type="text" id="new-desc" placeholder="简要描述">
+    </div>
+    <div class="field">
+      <label>初始内容</label>
+      <textarea id="new-content" rows="4" placeholder="Prompt 内容..."></textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="createPrompt()">创建</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let prompts = JSON.parse(localStorage.getItem('prompthub_data') || '[]');
+let currentId = null;
+let isDirty = false;
+
+function save() {
+  localStorage.setItem('prompthub_data', JSON.stringify(prompts));
+  renderList();
+  updateStats();
+}
+
+function renderList() {
+  const search = document.getElementById('search').value.toLowerCase();
+  const filtered = prompts.filter(p => 
+    p.name.toLowerCase().includes(search) || 
+    p.desc.toLowerCase().includes(search) ||
+    p.tags.some(t => t.toLowerCase().includes(search))
+  );
+  
+  document.getElementById('prompt-list').innerHTML = filtered.map(p => {
+    const current = prompts.find(x => x.id === currentId);
+    const latestV = p.versions.length > 0 ? p.versions[p.versions.length - 1] : null;
+    return `
+      <div class="prompt-item ${currentId === p.id ? 'active' : ''}" onclick="selectPrompt('${p.id}')">
+        <h4>${p.name}</h4>
+        <p>${p.desc || '无描述'}</p>
+        <div class="meta">
+          <span>v${p.versions.length}</span>
+          <span>${latestV ? new Date(latestV.time).toLocaleDateString() : '无版本'}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectPrompt(id) {
+  if (isDirty && !confirm('当前修改未保存，是否放弃？')) return;
+  
+  currentId = id;
+  const p = prompts.find(x => x.id === id);
+  if (!p) return;
+  
+  const latest = p.versions.length > 0 ? p.versions[p.versions.length - 1].content : '';
+  document.getElementById('prompt-editor').value = latest;
+  
+  renderTags(p.tags);
+  renderVersions(p.versions);
+  renderList();
+  isDirty = false;
+}
+
+function renderTags(tags) {
+  document.getElementById('tags-area').innerHTML = `
+    <span style="font-size:12px;color:#8b949e">标签:</span>
+    ${tags.map(t => `<span class="tag">${t}<button onclick="removeTag('${t}')">×</button></span>`).join('')}
+    <span class="add-tag"><input placeholder="+标签" onkeypress="addTag(event)"></span>
+  `;
+}
+
+function addTag(e) {
+  if (e.key !== 'Enter') return;
+  const tag = e.target.value.trim();
+  if (!tag || !currentId) return;
+  
+  const p = prompts.find(x => x.id === currentId);
+  if (p && !p.tags.includes(tag)) {
+    p.tags.push(tag);
+    save();
+    renderTags(p.tags);
+  }
+  e.target.value = '';
+}
+
+function removeTag(tag) {
+  if (!currentId) return;
+  const p = prompts.find(x => x.id === currentId);
+  if (p) {
+    p.tags = p.tags.filter(t => t !== tag);
+    save();
+    renderTags(p.tags);
+  }
+}
+
+function renderVersions(versions) {
+  document.getElementById('version-list').innerHTML = versions.map((v, i) => `
+    <div class="version-item ${i === versions.length - 1 ? 'current' : ''}" onclick="loadVersion(${i})">
+      <span class="vnum">v${i + 1}</span>
+      <span class="vdate">${new Date(v.time).toLocaleString()}</span>
+    </div>
+  `).join('') || '<span style="color:#64748b;font-size:12px">暂无版本</span>';
+}
+
+function loadVersion(index) {
+  if (!currentId) return;
+  const p = prompts.find(x => x.id === currentId);
+  if (p && p.versions[index]) {
+    document.getElementById('prompt-editor').value = p.versions[index].content;
+    isDirty = true;
+  }
+}
+
+function markDirty() {
+  isDirty = true;
+}
+
+function saveVersion() {
+  if (!currentId) return;
+  const content = document.getElementById('prompt-editor').value.trim();
+  if (!content) return;
+  
+  const p = prompts.find(x => x.id === currentId);
+  if (p) {
+    p.versions.push({
+      content,
+      time: Date.now(),
+      note: ''
+    });
+    save();
+    renderVersions(p.versions);
+    isDirty = false;
+  }
+}
+
+function showNewPrompt() {
+  document.getElementById('new-modal').classList.add('show');
+  document.getElementById('new-name').value = '';
+  document.getElementById('new-desc').value = '';
+  document.getElementById('new-content').value = '';
+}
+
+function closeModal() {
+  document.querySelectorAll('.modal').forEach(m => m.classList.remove('show'));
+}
+
+function createPrompt() {
+  const name = document.getElementById('new-name').value.trim();
+  const desc = document.getElementById('new-desc').value.trim();
+  const content = document.getElementById('new-content').value.trim();
+  
+  if (!name) return;
+  
+  const id = 'p_' + Date.now();
+  const p = {
+    id,
+    name,
+    desc,
+    tags: [],
+    versions: content ? [{ content, time: Date.now(), note: '初始版本' }] : [],
+    created: Date.now()
+  };
+  
+  prompts.push(p);
+  save();
+  closeModal();
+  selectPrompt(id);
+}
+
+function filterPrompts() {
+  renderList();
+}
+
+function updateStats() {
+  document.getElementById('total-count').textContent = prompts.length;
+  document.getElementById('version-count').textContent = prompts.reduce((sum, p) => sum + p.versions.length, 0);
+  const allTags = new Set(prompts.flatMap(p => p.tags));
+  document.getElementById('tag-count').textContent = allTags.size;
+}
+
+function compareVersions() {
+  alert('版本对比功能开发中...');
+}
+
+function exportAll() {
+  const data = JSON.stringify(prompts, null, 2);
+  const blob = new Blob([data], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'prompts_backup.json';
+  a.click();
+}
+
+function testPrompt() {
+  const content = document.getElementById('prompt-editor').value;
+  console.log('Testing prompt:', content);
+  alert('Prompt 已输出到控制台');
+}
+
+// Init
+renderList();
+updateStats();
+</script>
+</body>
+</html>
